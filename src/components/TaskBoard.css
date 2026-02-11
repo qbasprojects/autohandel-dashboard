@@ -242,3 +242,37 @@
     grid-template-columns: 1fr;
   }
 }
+
+.form-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 15px;
+}
+
+.assigned-badge {
+  background: #e3f2fd;
+  color: #1976d2;
+  padding: 4px 10px;
+  border-radius: 12px;
+  font-size: 12px;
+  display: inline-block;
+  margin-bottom: 10px;
+}
+
+.due-date {
+  background: #fff3e0;
+  color: #f57c00;
+  padding: 6px 10px;
+  border-radius: 5px;
+  font-size: 12px;
+  margin: 10px 0;
+  display: inline-block;
+}
+
+.task-meta {
+  font-size: 11px;
+  color: #999;
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px solid #f0f0f0;
+}

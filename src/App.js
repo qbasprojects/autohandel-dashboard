@@ -7,11 +7,9 @@ import AssistantNotes from './components/AssistantNotes';
 import DetailingQueue from './components/DetailingQueue';
 import NoticeBoard from './components/NoticeBoard';
 import TaskBoard from './components/TaskBoard';
-import AutoDNAReports from './components/AutoDNAReports';
 
 function App() {
   const [user, setUser] = useState(null);
-  const [userProfile, setUserProfile] = useState(null);
   const [loading, setLoading] = useState(true);
   const [activeModule, setActiveModule] = useState(null);
 
@@ -21,39 +19,18 @@ function App() {
     { id: 'detailing', name: 'Kolejka Detailingu', icon: '🚗', color: '#7ED321' },
     { id: 'board', name: 'Tablica Ogłoszeń', icon: '📌', color: '#BD10E0' },
     { id: 'tasks', name: 'Zadania', icon: '✓', color: '#50E3C2' },
-    { id: 'autodna', name: 'Raporty AutoDNA', icon: '📊', color: '#FF6B6B' },
   ];
 
   useEffect(() => {
     // Sprawdź czy użytkownik jest zalogowany
-    supabase.auth.getSession().then(async ({ data: { session } }) => {
-      if (session?.user) {
-        setUser(session.user);
-        // Pobierz profil użytkownika
-        const { data: profile } = await supabase
-          .from('user_profiles')
-          .select('*')
-          .eq('id', session.user.id)
-          .single();
-        setUserProfile(profile);
-      }
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      setUser(session?.user ?? null);
       setLoading(false);
     });
 
     // Nasłuchuj na zmiany sesji
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event, session) => {
-      if (session?.user) {
-        setUser(session.user);
-        const { data: profile } = await supabase
-          .from('user_profiles')
-          .select('*')
-          .eq('id', session.user.id)
-          .single();
-        setUserProfile(profile);
-      } else {
-        setUser(null);
-        setUserProfile(null);
-      }
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      setUser(session?.user ?? null);
     });
 
     return () => subscription.unsubscribe();
@@ -95,7 +72,6 @@ function App() {
           {activeModule === 'detailing' && <DetailingQueue />}
           {activeModule === 'board' && <NoticeBoard />}
           {activeModule === 'tasks' && <TaskBoard />}
-          {activeModule === 'autodna' && <AutoDNAReports />}
         </div>
       </div>
     );
@@ -106,8 +82,7 @@ function App() {
       <header className="dashboard-header">
         <h1>🚗 AutoHandel Dashboard</h1>
         <div className="user-info">
-          <span>Zalogowany: {userProfile?.full_name || user.email}</span>
-          <span className="user-role">({userProfile?.role})</span>
+          <span>Zalogowany: {user.email}</span>
           <button className="logout-btn" onClick={handleLogout}>Wyloguj</button>
         </div>
       </header>

@@ -6,14 +6,28 @@ function AssistantNotes() {
   const [tasks, setTasks] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showAddForm, setShowAddForm] = useState(false);
+  const [showCompleted, setShowCompleted] = useState(false);
   const [newTask, setNewTask] = useState({
+    category: 'asap',
     description: '',
-    deadline: getTodayDate()
+    deadline: getTodayDate(),
+    license_plate: '',
+    inspection_deadline: ''
   });
+  const [completingTask, setCompletingTask] = useState(null);
+  const [completionNote, setCompletionNote] = useState('');
 
   function getTodayDate() {
     return new Date().toISOString().split('T')[0];
   }
+
+  const categories = {
+    asap: { label: 'Do zrobienia ASAP', icon: '🔥', color: '#FF6B6B' },
+    charging: { label: 'Auta do naładowania', icon: '🔌', color: '#4A90E2' },
+    refueling: { label: 'Auta do zatankowania', icon: '⛽', color: '#F5A623' },
+    inspection: { label: 'Badania techniczne', icon: '🔧', color: '#BD10E0' },
+    other: { label: 'Inne', icon: '📋', color: '#7ED321' }
+  };
 
   useEffect(() => {
     fetchTasks();
@@ -35,43 +49,82 @@ function AssistantNotes() {
 
   const addTask = async () => {
     if (newTask.description.trim()) {
-      const { data, error } = await supabase
+      const taskData = {
+        category: newTask.category,
+        description: newTask.description,
+        deadline: newTask.deadline,
+        completed: false,
+        completed_at: null,
+        completion_note: null
+      };
+
+      // Dodaj dodatkowe pola dla określonych kategorii
+      if (newTask.category === 'charging' || newTask.category === 'refueling') {
+        taskData.license_plate = newTask.license_plate;
+      }
+      if (newTask.category === 'inspection') {
+        taskData.license_plate = newTask.license_plate;
+        taskData.inspection_deadline = newTask.inspection_deadline;
+      }
+
+      const { error } = await supabase
         .from('assistant_tasks')
-        .insert([{
-          description: newTask.description,
-          deadline: newTask.deadline,
-          completed: false,
-          completed_at: null
-        }])
-        .select();
+        .insert([taskData]);
 
       if (error) {
         console.error('Error adding task:', error);
       } else {
-        setTasks([...tasks, ...data]);
-        setNewTask({ description: '', deadline: getTodayDate() });
+        fetchTasks();
+        setNewTask({ 
+          category: 'asap', 
+          description: '', 
+          deadline: getTodayDate(),
+          license_plate: '',
+          inspection_deadline: ''
+        });
         setShowAddForm(false);
       }
     }
   };
 
-  const toggleTask = async (id, currentCompleted) => {
+  const startCompleting = (task) => {
+    setCompletingTask(task.id);
+    setCompletionNote('');
+  };
+
+  const completeTask = async (taskId) => {
     const { error } = await supabase
       .from('assistant_tasks')
       .update({ 
-        completed: !currentCompleted,
-        completed_at: !currentCompleted ? new Date().toLocaleString('pl-PL') : null
+        completed: true,
+        completed_at: new Date().toLocaleString('pl-PL'),
+        completion_note: completionNote || null
       })
-      .eq('id', id);
+      .eq('id', taskId);
 
     if (error) {
-      console.error('Error updating task:', error);
+      console.error('Error completing task:', error);
     } else {
-      setTasks(tasks.map(task => 
-        task.id === id 
-          ? { ...task, completed: !currentCompleted, completed_at: !currentCompleted ? new Date().toLocaleString('pl-PL') : null }
-          : task
-      ));
+      fetchTasks();
+      setCompletingTask(null);
+      setCompletionNote('');
+    }
+  };
+
+  const uncompleteTask = async (taskId) => {
+    const { error } = await supabase
+      .from('assistant_tasks')
+      .update({ 
+        completed: false,
+        completed_at: null,
+        completion_note: null
+      })
+      .eq('id', taskId);
+
+    if (error) {
+      console.error('Error uncompleting task:', error);
+    } else {
+      fetchTasks();
     }
   };
 
@@ -88,36 +141,11 @@ function AssistantNotes() {
     }
   };
 
-  const setQuickDeadline = (days) => {
-    const date = new Date();
-    date.setDate(date.getDate() + days);
-    setNewTask({ ...newTask, deadline: date.toISOString().split('T')[0] });
-  };
-
   const pendingTasks = tasks.filter(t => !t.completed);
   const completedTasks = tasks.filter(t => t.completed);
 
-  const groupTasksByDate = (taskList) => {
-    const grouped = {};
-    taskList.forEach(task => {
-      if (!grouped[task.deadline]) {
-        grouped[task.deadline] = [];
-      }
-      grouped[task.deadline].push(task);
-    });
-    return grouped;
-  };
-
-  const formatDate = (dateString) => {
-    const date = new Date(dateString);
-    const today = new Date();
-    const tomorrow = new Date(today);
-    tomorrow.setDate(tomorrow.getDate() + 1);
-
-    if (date.toDateString() === today.toDateString()) return '🔥 Dzisiaj';
-    if (date.toDateString() === tomorrow.toDateString()) return '⚡ Jutro';
-    
-    return date.toLocaleDateString('pl-PL', { weekday: 'long', day: 'numeric', month: 'long' });
+  const getTasksByCategory = (category) => {
+    return pendingTasks.filter(t => t.category === category);
   };
 
   if (loading) {
@@ -138,22 +166,64 @@ function AssistantNotes() {
           <h3>Nowe zadanie dla asystenta</h3>
           
           <div className="form-field">
+            <label>Kategoria:</label>
+            <div className="category-buttons">
+              {Object.entries(categories).map(([key, val]) => (
+                <button
+                  key={key}
+                  className={`category-btn ${newTask.category === key ? 'active' : ''}`}
+                  style={{ 
+                    borderColor: newTask.category === key ? val.color : '#ddd',
+                    backgroundColor: newTask.category === key ? val.color + '20' : 'white'
+                  }}
+                  onClick={() => setNewTask({...newTask, category: key})}
+                >
+                  {val.icon} {val.label}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {(newTask.category === 'charging' || newTask.category === 'refueling' || newTask.category === 'inspection') && (
+            <div className="form-field">
+              <label>Numer rejestracyjny:</label>
+              <input
+                type="text"
+                value={newTask.license_plate}
+                onChange={(e) => setNewTask({...newTask, license_plate: e.target.value.toUpperCase()})}
+                placeholder="np. WGD 12345"
+              />
+            </div>
+          )}
+
+          {newTask.category === 'inspection' && (
+            <div className="form-field">
+              <label>Termin badania:</label>
+              <input
+                type="date"
+                value={newTask.inspection_deadline}
+                onChange={(e) => setNewTask({...newTask, inspection_deadline: e.target.value})}
+              />
+            </div>
+          )}
+
+          <div className="form-field">
             <label>Opis zadania:</label>
             <textarea
               value={newTask.description}
               onChange={(e) => setNewTask({...newTask, description: e.target.value})}
-              placeholder="Np. Wyślij opony pod adres ul. Kwiatowa 15..."
+              placeholder={
+                newTask.category === 'charging' ? 'np. Stacja nr 2' :
+                newTask.category === 'refueling' ? 'np. Zatankuj do pełna' :
+                newTask.category === 'inspection' ? 'np. Badanie + wymiana oleju' :
+                'Szczegóły zadania...'
+              }
               rows="3"
             />
           </div>
 
-          <div className="deadline-section">
+          <div className="form-field">
             <label>Termin wykonania:</label>
-            <div className="quick-deadline-buttons">
-              <button onClick={() => setQuickDeadline(0)} className="quick-btn">Dzisiaj</button>
-              <button onClick={() => setQuickDeadline(1)} className="quick-btn">Jutro</button>
-              <button onClick={() => setQuickDeadline(2)} className="quick-btn">Pojutrze</button>
-            </div>
             <input 
               type="date" 
               value={newTask.deadline}
@@ -168,62 +238,108 @@ function AssistantNotes() {
         </div>
       )}
 
-      <div className="tasks-sections">
-        <div className="pending-section">
-          <h3>⏳ Do zrobienia ({pendingTasks.length})</h3>
-          {Object.entries(groupTasksByDate(pendingTasks))
-            .sort(([dateA], [dateB]) => dateA.localeCompare(dateB))
-            .map(([date, dateTasks]) => (
-              <div key={date} className="date-group">
-                <div className="date-header">{formatDate(date)}</div>
-                {dateTasks.map(task => (
-                  <div key={task.id} className="task-card pending">
-                    <div className="task-content">
-                      <input
-                        type="checkbox"
-                        checked={task.completed}
-                        onChange={() => toggleTask(task.id, task.completed)}
-                        className="task-checkbox"
-                      />
-                      <span className="task-description">{task.description}</span>
+      <div className="categories-section">
+        {Object.entries(categories).map(([catKey, catVal]) => {
+          const catTasks = getTasksByCategory(catKey);
+          if (catTasks.length === 0) return null;
+
+          return (
+            <div key={catKey} className="category-group">
+              <h3 style={{ color: catVal.color }}>
+                {catVal.icon} {catVal.label} ({catTasks.length})
+              </h3>
+              <div className="tasks-grid">
+                {catTasks.map(task => (
+                  <div key={task.id} className="task-card-new" style={{ borderLeftColor: catVal.color }}>
+                    {task.license_plate && (
+                      <div className="license-plate">{task.license_plate}</div>
+                    )}
+                    <div className="task-description">{task.description}</div>
+                    {task.inspection_deadline && (
+                      <div className="inspection-date">
+                        📅 Badanie do: {new Date(task.inspection_deadline).toLocaleDateString('pl-PL')}
+                      </div>
+                    )}
+                    <div className="task-deadline">
+                      ⏰ Do: {new Date(task.deadline).toLocaleDateString('pl-PL')}
                     </div>
-                    <button className="delete-task" onClick={() => deleteTask(task.id)}>
-                      🗑️
-                    </button>
+
+                    {completingTask === task.id ? (
+                      <div className="completion-form">
+                        <textarea
+                          placeholder="Opcjonalnie: krótki opis wykonania..."
+                          value={completionNote}
+                          onChange={(e) => setCompletionNote(e.target.value)}
+                          rows="2"
+                        />
+                        <div className="completion-buttons">
+                          <button className="confirm-btn" onClick={() => completeTask(task.id)}>
+                            ✓ Potwierdź
+                          </button>
+                          <button className="cancel-completion-btn" onClick={() => setCompletingTask(null)}>
+                            Anuluj
+                          </button>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="task-actions">
+                        <button className="complete-task-btn" onClick={() => startCompleting(task)}>
+                          ✓ Zrobione
+                        </button>
+                        <button className="delete-task-btn" onClick={() => deleteTask(task.id)}>
+                          🗑️
+                        </button>
+                      </div>
+                    )}
                   </div>
                 ))}
               </div>
-            ))}
-          {pendingTasks.length === 0 && (
-            <div className="empty-state">✨ Wszystkie zadania wykonane!</div>
-          )}
+            </div>
+          );
+        })}
+
+        {pendingTasks.length === 0 && (
+          <div className="empty-state">✨ Wszystkie zadania wykonane!</div>
+        )}
+      </div>
+
+      <div className="completed-section">
+        <div className="completed-header" onClick={() => setShowCompleted(!showCompleted)}>
+          <h3>✅ Wykonane zadania ({completedTasks.length})</h3>
+          <button className="toggle-btn">{showCompleted ? '▼' : '▶'}</button>
         </div>
 
-        <div className="completed-section">
-          <h3>✅ Wykonane ({completedTasks.length})</h3>
-          {completedTasks.map(task => (
-            <div key={task.id} className="task-card completed">
-              <div className="task-content">
-                <input
-                  type="checkbox"
-                  checked={task.completed}
-                  onChange={() => toggleTask(task.id, task.completed)}
-                  className="task-checkbox"
-                />
-                <div>
-                  <span className="task-description">{task.description}</span>
-                  <div className="completed-time">Wykonano: {task.completed_at}</div>
+        {showCompleted && (
+          <div className="completed-list">
+            {completedTasks.slice().reverse().map(task => (
+              <div key={task.id} className="completed-task-card">
+                <div className="completed-task-header">
+                  <span className="completed-category" style={{ color: categories[task.category]?.color }}>
+                    {categories[task.category]?.icon} {categories[task.category]?.label}
+                  </span>
+                  {task.license_plate && (
+                    <span className="license-plate-small">{task.license_plate}</span>
+                  )}
+                </div>
+                <div className="completed-task-description">{task.description}</div>
+                {task.completion_note && (
+                  <div className="completion-note">📌 {task.completion_note}</div>
+                )}
+                <div className="completed-task-meta">
+                  <span>🕐 {task.completed_at}</span>
+                  <div className="completed-actions">
+                    <button className="uncomplete-btn" onClick={() => uncompleteTask(task.id)}>
+                      ↩️ Cofnij
+                    </button>
+                    <button className="delete-completed-btn" onClick={() => deleteTask(task.id)}>
+                      🗑️
+                    </button>
+                  </div>
                 </div>
               </div>
-              <button className="delete-task" onClick={() => deleteTask(task.id)}>
-                🗑️
-              </button>
-            </div>
-          ))}
-          {completedTasks.length === 0 && (
-            <div className="empty-state">Brak wykonanych zadań</div>
-          )}
-        </div>
+            ))}
+          </div>
+        )}
       </div>
     </div>
   );
