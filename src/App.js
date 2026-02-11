@@ -11,6 +11,7 @@ import AutoDNAReports from './components/AutoDNAReports';
 
 function App() {
   const [user, setUser] = useState(null);
+  const [userProfile, setUserProfile] = useState(null);
   const [loading, setLoading] = useState(true);
   const [activeModule, setActiveModule] = useState(null);
 
@@ -25,14 +26,34 @@ function App() {
 
   useEffect(() => {
     // Sprawdź czy użytkownik jest zalogowany
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      setUser(session?.user ?? null);
+    supabase.auth.getSession().then(async ({ data: { session } }) => {
+      if (session?.user) {
+        setUser(session.user);
+        // Pobierz profil użytkownika
+        const { data: profile } = await supabase
+          .from('user_profiles')
+          .select('*')
+          .eq('id', session.user.id)
+          .single();
+        setUserProfile(profile);
+      }
       setLoading(false);
     });
 
     // Nasłuchuj na zmiany sesji
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-      setUser(session?.user ?? null);
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event, session) => {
+      if (session?.user) {
+        setUser(session.user);
+        const { data: profile } = await supabase
+          .from('user_profiles')
+          .select('*')
+          .eq('id', session.user.id)
+          .single();
+        setUserProfile(profile);
+      } else {
+        setUser(null);
+        setUserProfile(null);
+      }
     });
 
     return () => subscription.unsubscribe();
@@ -85,7 +106,8 @@ function App() {
       <header className="dashboard-header">
         <h1>🚗 AutoHandel Dashboard</h1>
         <div className="user-info">
-          <span>Zalogowany: {user.email}</span>
+          <span>Zalogowany: {userProfile?.full_name || user.email}</span>
+          <span className="user-role">({userProfile?.role})</span>
           <button className="logout-btn" onClick={handleLogout}>Wyloguj</button>
         </div>
       </header>
